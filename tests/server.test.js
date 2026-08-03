@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const { beforeEach } = require("node:test");
 const { resetTodos, resolvePort } = require("../server");
 const { initializeHomepage } = require("../public/homepage");
@@ -43,6 +45,8 @@ test("GET / renders the todo page with an empty state", async () => {
   assert.match(body, /Simple Todo App/i);
   assert.match(body, /Create a new todo/i);
   assert.match(body, /You do not have any todos yet\./i);
+  assert.match(body, /Single-server todo flow/i);
+  assert.doesNotMatch(body, /fullstack/i);
   assert.match(body, /<form[^>]+action="\/todos"/i);
   assert.match(body, /<link[^>]+href="\/styles\.css"/i);
   assert.doesNotMatch(body, /<a[^>]+href="\/health"/i);
@@ -104,6 +108,17 @@ test("GET /styles.css serves the stylesheet asset", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/css/i);
   assert.match(body, /body\s*\{/i);
+});
+
+test("project docs and package metadata avoid the old fullstack wording", () => {
+  const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+  );
+
+  assert.match(readme, /Express and EJS todo app\./);
+  assert.doesNotMatch(readme, /fullstack/i);
+  assert.equal(packageJson.description, "Express and EJS todo app.");
 });
 
 function createElement(initialText = "") {

@@ -1,8 +1,8 @@
 # todo-app-from-scratch
 
-Minimal Express-based fullstack todo app. The project uses a single Node
-server to render an EJS frontend, handle todo form submissions, and serve
-static assets from the same repository.
+Express and EJS todo app. The project uses a single Node server to render an
+EJS frontend, handle todo form submissions, and serve static assets from the
+same repository.
 
 ## Requirements
 
