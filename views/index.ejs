@@ -21,19 +21,64 @@
   <body>
     <main class="hero">
       <div class="hero-topbar">
-        <p class="eyebrow">Express and EJS Starter</p>
+        <p class="eyebrow">Simple fullstack flow</p>
         <button class="theme-toggle" type="button" aria-label="Switch color theme">
           <span class="theme-toggle__label">Dark mode</span>
         </button>
       </div>
       <h1><%= title %></h1>
       <p class="summary">
-        World's simplest todo app.
+        Create todos and keep a lightweight in-memory list on the same page.
       </p>
-      <button class="cta" type="button" data-health-button>Check health</button>
-      <p class="health-status" data-health-status aria-live="polite">
-        Health status will appear here.
-      </p>
+      <section class="todo-panel" aria-labelledby="todo-form-title">
+        <div class="section-heading">
+          <h2 id="todo-form-title">Create a new todo</h2>
+          <p>Add one task at a time. Todos reset when the server restarts.</p>
+        </div>
+        <form class="todo-form" action="/todos" method="post">
+          <label class="todo-label" for="todo">What needs doing?</label>
+          <div class="todo-form__row">
+            <input
+              id="todo"
+              name="todo"
+              type="text"
+              value="<%= todoValue %>"
+              placeholder="Buy milk"
+              maxlength="120"
+              autocomplete="off"
+            />
+            <button class="cta" type="submit">Add todo</button>
+          </div>
+          <% if (formError) { %>
+            <p class="form-message" data-state="error" aria-live="polite"><%= formError %></p>
+          <% } %>
+        </form>
+      </section>
+      <section class="todo-panel" aria-labelledby="todo-list-title">
+        <div class="section-heading">
+          <h2 id="todo-list-title">Todo list</h2>
+          <p><%= todos.length %> item<%= todos.length === 1 ? "" : "s" %> in memory.</p>
+        </div>
+        <% if (todos.length === 0) { %>
+          <p class="empty-state">You do not have any todos yet.</p>
+        <% } else { %>
+          <ol class="todo-list">
+            <% todos.forEach((todo) => { %>
+              <li class="todo-list__item"><span><%= todo.text %></span></li>
+            <% }) %>
+          </ol>
+        <% } %>
+      </section>
+      <section class="health-panel" aria-labelledby="health-check-title">
+        <div class="section-heading">
+          <h2 id="health-check-title">Backend health</h2>
+          <p>Quick connectivity check for the Express server.</p>
+        </div>
+        <button class="cta cta-secondary" type="button" data-health-button>Check health</button>
+        <p class="health-status" data-health-status aria-live="polite">
+          Health status will appear here.
+        </p>
+      </section>
     </main>
     <script src="/homepage.js"></script>
   </body>

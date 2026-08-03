@@ -1,8 +1,8 @@
 # todo-app-from-scratch
 
-Minimal Express-based fullstack scaffold for a simple todo app. The project
-uses a single Node server to render an EJS frontend and serve static assets
-from the same repository.
+Minimal Express-based fullstack todo app. The project uses a single Node
+server to render an EJS frontend, handle todo form submissions, and serve
+static assets from the same repository.
 
 ## Requirements
 
@@ -30,6 +30,7 @@ The app runs at `http://localhost:3000` by default.
 ```text
 .
 ├── public/
+│   ├── homepage.js
 │   └── styles.css
 ├── tests/
 │   └── server.test.js
@@ -43,6 +44,7 @@ The app runs at `http://localhost:3000` by default.
 ## Notes
 
 - Express renders the homepage from `views/index.ejs`.
+- Todo creation uses a standard HTML form posting to `POST /todos`.
+- Todos are stored in memory only and reset whenever the server restarts.
 - Static assets are served by Express from `public/`.
-- The starter page includes a minimal CSS fade-in/hover animation baseline.
 - The health check endpoint is available at `GET /health`.
