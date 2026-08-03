@@ -12,7 +12,13 @@ function resolvePort(portValue) {
     return DEFAULT_PORT;
   }
 
-  const parsedPort = Number.parseInt(String(portValue), 10);
+  const normalizedPortValue = String(portValue).trim();
+
+  if (!/^\d+$/.test(normalizedPortValue)) {
+    return DEFAULT_PORT;
+  }
+
+  const parsedPort = Number.parseInt(normalizedPortValue, 10);
 
   if (
     Number.isNaN(parsedPort) ||
