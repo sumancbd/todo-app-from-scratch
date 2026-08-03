@@ -30,37 +30,11 @@
       <p class="summary">
         World's simplest todo app.
       </p>
-      <a class="cta" href="/health">Check health</a>
+      <button class="cta" type="button" data-health-button>Check health</button>
+      <p class="health-status" data-health-status aria-live="polite">
+        Health status will appear here.
+      </p>
     </main>
-    <script>
-      (() => {
-        const storageKey = "theme-preference";
-        const root = document.documentElement;
-        const toggle = document.querySelector(".theme-toggle");
-        const label = document.querySelector(".theme-toggle__label");
-
-        if (!toggle || !label) {
-          return;
-        }
-
-        function syncThemeUi(theme) {
-          const nextTheme = theme === "dark" ? "light" : "dark";
-          label.textContent = nextTheme === "dark" ? "Dark mode" : "Light mode";
-          toggle.setAttribute("aria-label", `Switch to ${nextTheme} mode`);
-          toggle.setAttribute("aria-pressed", String(theme === "dark"));
-        }
-
-        syncThemeUi(root.dataset.theme || "light");
-
-        toggle.addEventListener("click", () => {
-          const currentTheme = root.dataset.theme === "dark" ? "dark" : "light";
-          const nextTheme = currentTheme === "dark" ? "light" : "dark";
-          root.dataset.theme = nextTheme;
-          root.style.colorScheme = nextTheme;
-          localStorage.setItem(storageKey, nextTheme);
-          syncThemeUi(nextTheme);
-        });
-      })();
-    </script>
+    <script src="/homepage.js"></script>
   </body>
 </html>
