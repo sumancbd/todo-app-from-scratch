@@ -180,9 +180,27 @@ test("initializeHomepage shows backend status after a successful health check", 
   assert.equal(fetchCalls.length, 1);
   assert.equal(fetchCalls[0].url, "/health");
   assert.equal(status.dataset.state, "success");
-  assert.equal(status.textContent, "Backend status: ok");
+  assert.equal(status.textContent, "Healthy");
   assert.equal(button.disabled, false);
   assert.equal(timeoutEntries.length, 0);
+});
+
+test("initializeHomepage shows unhealthy status when the backend result is not ok", async () => {
+  const { environment, button, status } = createHomePageEnvironment({
+    fetch: async () => ({
+      ok: true,
+      async json() {
+        return { status: "degraded" };
+      },
+    }),
+  });
+
+  initializeHomepage(environment);
+  await button.click();
+
+  assert.equal(status.dataset.state, "error");
+  assert.equal(status.textContent, "Unhealthy");
+  assert.equal(button.disabled, false);
 });
 
 test("initializeHomepage restores the UI when the health check times out", async () => {
@@ -229,7 +247,7 @@ test("initializeHomepage restores the UI when the health check times out", async
   assert.equal(fetchCalls.length, 1);
   assert.equal(abortSignal.aborted, true);
   assert.equal(status.dataset.state, "error");
-  assert.equal(status.textContent, "Backend status: unavailable");
+  assert.equal(status.textContent, "Unhealthy");
   assert.equal(button.disabled, false);
   assert.equal(timeoutEntries.length, 0);
 });

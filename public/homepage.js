@@ -56,13 +56,13 @@ function initializeHealthCheck(env) {
       }
 
       const body = await response.json();
-      const status = typeof body.status === "string" ? body.status : "unknown";
+      const isHealthy = body?.status === "ok";
 
-      healthStatus.dataset.state = "success";
-      healthStatus.textContent = `Backend status: ${status}`;
+      healthStatus.dataset.state = isHealthy ? "success" : "error";
+      healthStatus.textContent = isHealthy ? "Healthy" : "Unhealthy";
     } catch {
       healthStatus.dataset.state = "error";
-      healthStatus.textContent = "Backend status: unavailable";
+      healthStatus.textContent = "Unhealthy";
     } finally {
       env.clearTimeout(timeoutId);
       healthButton.disabled = false;
