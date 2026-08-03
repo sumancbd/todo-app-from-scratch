@@ -36,6 +36,16 @@ test("GET / returns the starter page", async () => {
   assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
   assert.match(body, /Express and EJS Starter/i);
   assert.match(body, /Simple Todo App/i);
+  assert.match(body, /<link[^>]+href="\/styles\.css"/i);
+});
+
+test("GET /styles.css serves the stylesheet asset", async () => {
+  const response = await makeRequest("/styles.css");
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/css/i);
+  assert.match(body, /body\s*\{/i);
 });
 
 test("GET /health returns ok status", async () => {
