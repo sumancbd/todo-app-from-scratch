@@ -32,6 +32,8 @@ test("GET / returns the starter page", async () => {
   const body = await response.text();
 
   assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
+  assert.match(body, /Express and EJS Starter/i);
   assert.match(body, /Simple Todo App/i);
 });
 
