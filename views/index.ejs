@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title><%= title %></title>
+    <script>
+      (() => {
+        const storageKey = "theme-preference";
+        const storedTheme = localStorage.getItem(storageKey);
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light";
+        const theme = storedTheme || systemTheme;
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.style.colorScheme = theme;
+      })();
+    </script>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="hero">
+      <div class="hero-topbar">
+        <p class="eyebrow">Express and EJS Starter</p>
+        <button class="theme-toggle" type="button" aria-label="Switch color theme">
+          <span class="theme-toggle__label">Dark mode</span>
+        </button>
+      </div>
+      <h1><%= title %></h1>
+      <p class="summary">
+        World's simplest todo app.
+      </p>
+      <a class="cta" href="/health">Check health</a>
+    </main>
+    <script>
+      (() => {
+        const storageKey = "theme-preference";
+        const root = document.documentElement;
+        const toggle = document.querySelector(".theme-toggle");
+        const label = document.querySelector(".theme-toggle__label");
+
+        if (!toggle || !label) {
+          return;
+        }
+
+        function syncThemeUi(theme) {
+          const nextTheme = theme === "dark" ? "light" : "dark";
+          label.textContent = nextTheme === "dark" ? "Dark mode" : "Light mode";
+          toggle.setAttribute("aria-label", `Switch to ${nextTheme} mode`);
+          toggle.setAttribute("aria-pressed", String(theme === "dark"));
+        }
+
+        syncThemeUi(root.dataset.theme || "light");
+
+        toggle.addEventListener("click", () => {
+          const currentTheme = root.dataset.theme === "dark" ? "dark" : "light";
+          const nextTheme = currentTheme === "dark" ? "light" : "dark";
+          root.dataset.theme = nextTheme;
+          root.style.colorScheme = nextTheme;
+          localStorage.setItem(storageKey, nextTheme);
+          syncThemeUi(nextTheme);
+        });
+      })();
+    </script>
+  </body>
+</html>
