@@ -2,9 +2,9 @@
   color-scheme: light;
   font-family: "Avenir Next", "Segoe UI", sans-serif;
   background:
-    radial-gradient(circle at top, #f7d8aa, transparent 40%),
-    linear-gradient(160deg, #fffaf2, #f3efe7);
-  color: #1c1c1c;
+    radial-gradient(circle at top, #9adfe0, transparent 42%),
+    linear-gradient(160deg, #f3fbfc, #e7f3f6);
+  color: #12313a;
 }
 
 * {
@@ -22,10 +22,10 @@ body {
 .hero {
   width: min(100%, 40rem);
   padding: 3rem;
-  border: 1px solid rgba(28, 28, 28, 0.08);
+  border: 1px solid rgba(18, 49, 58, 0.08);
   border-radius: 1.5rem;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 1.25rem 3rem rgba(54, 40, 19, 0.12);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 1.25rem 3rem rgba(24, 92, 104, 0.14);
   animation: hero-enter 500ms ease-out both;
 }
 
@@ -34,7 +34,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.14em;
   font-size: 0.78rem;
-  color: #8c5a15;
+  color: #16758a;
 }
 
 h1 {
@@ -47,7 +47,7 @@ h1 {
   margin: 1rem 0 0;
   font-size: 1.05rem;
   line-height: 1.6;
-  color: #4a4339;
+  color: #45616a;
 }
 
 .cta {
@@ -55,8 +55,8 @@ h1 {
   margin-top: 1.5rem;
   padding: 0.8rem 1.15rem;
   border-radius: 999px;
-  background: #1c1c1c;
-  color: #fffaf2;
+  background: #0f6f83;
+  color: #f4fdff;
   text-decoration: none;
   transition:
     transform 180ms ease,
@@ -67,8 +67,8 @@ h1 {
 .cta:hover,
 .cta:focus-visible {
   transform: translateY(-2px);
-  box-shadow: 0 0.75rem 1.5rem rgba(28, 28, 28, 0.18);
-  background: #352914;
+  box-shadow: 0 0.75rem 1.5rem rgba(15, 111, 131, 0.22);
+  background: #0b5e6f;
 }
 
 @keyframes hero-enter {
