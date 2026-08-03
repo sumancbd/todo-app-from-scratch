@@ -1,9 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { resolvePort } = require("../server");
+const fs = require("node:fs");
+const path = require("node:path");
+const { beforeEach } = require("node:test");
+const { resetTodos, resolvePort } = require("../server");
 const { initializeHomepage } = require("../public/homepage");
 
-async function makeRequest(pathname) {
+async function makeRequest(pathname, options = {}) {
   const { app } = require("../server");
   const server = app.listen(0);
 
@@ -14,7 +17,7 @@ async function makeRequest(pathname) {
   const { port } = server.address();
 
   try {
-    return await fetch(`http://127.0.0.1:${port}${pathname}`);
+    return await fetch(`http://127.0.0.1:${port}${pathname}`, options);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => {
@@ -29,19 +32,73 @@ async function makeRequest(pathname) {
   }
 }
 
-test("GET / returns the starter page", async () => {
+beforeEach(() => {
+  resetTodos();
+});
+
+test("GET / renders the todo page with an empty state", async () => {
   const response = await makeRequest("/");
   const body = await response.text();
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
-  assert.match(body, /Express and EJS Starter/i);
   assert.match(body, /Simple Todo App/i);
+  assert.match(body, /Create a new todo/i);
+  assert.match(body, /You do not have any todos yet\./i);
+  assert.match(body, /Single-server todo flow/i);
+  assert.doesNotMatch(body, /fullstack/i);
+  assert.match(body, /<form[^>]+action="\/todos"/i);
   assert.match(body, /<link[^>]+href="\/styles\.css"/i);
   assert.doesNotMatch(body, /<a[^>]+href="\/health"/i);
   assert.match(body, /<button[^>]+type="button"[^>]*>Check health<\/button>/i);
   assert.match(body, /data-health-status/i);
   assert.match(body, /<script[^>]+src="\/homepage\.js"/i);
+});
+
+test("POST /todos creates a todo and redirects to the homepage", async () => {
+  const response = await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+    redirect: "manual",
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/");
+});
+
+test("GET / renders created todos", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Buy milk/i);
+  assert.doesNotMatch(body, /You do not have any todos yet\./i);
+});
+
+test("POST /todos with blank content shows a validation error", async () => {
+  const response = await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=%20%20%20",
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 400);
+  assert.match(body, /Please enter a todo before saving\./i);
+  assert.match(body, /You do not have any todos yet\./i);
 });
 
 test("GET /styles.css serves the stylesheet asset", async () => {
@@ -51,6 +108,17 @@ test("GET /styles.css serves the stylesheet asset", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/css/i);
   assert.match(body, /body\s*\{/i);
+});
+
+test("project docs and package metadata avoid the old fullstack wording", () => {
+  const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+  );
+
+  assert.match(readme, /Express and EJS todo app\./);
+  assert.doesNotMatch(readme, /fullstack/i);
+  assert.equal(packageJson.description, "Express and EJS todo app.");
 });
 
 function createElement(initialText = "") {
