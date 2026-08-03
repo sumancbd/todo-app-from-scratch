@@ -5,7 +5,27 @@ const express = require("express");
 const app = express();
 const publicDir = path.join(__dirname, "public");
 const viewsDir = path.join(__dirname, "views");
-const port = Number.parseInt(process.env.PORT ?? "3000", 10);
+const DEFAULT_PORT = 3000;
+
+function resolvePort(portValue) {
+  if (portValue === undefined) {
+    return DEFAULT_PORT;
+  }
+
+  const parsedPort = Number.parseInt(String(portValue), 10);
+
+  if (
+    Number.isNaN(parsedPort) ||
+    parsedPort < 1 ||
+    parsedPort > 65535
+  ) {
+    return DEFAULT_PORT;
+  }
+
+  return parsedPort;
+}
+
+const port = resolvePort(process.env.PORT);
 
 app.set("view engine", "ejs");
 app.set("views", viewsDir);
@@ -28,4 +48,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app };
+module.exports = { app, resolvePort };

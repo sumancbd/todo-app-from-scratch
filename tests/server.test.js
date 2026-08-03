@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { resolvePort } = require("../server");
 
 async function makeRequest(pathname) {
   const { app } = require("../server");
@@ -43,4 +44,21 @@ test("GET /health returns ok status", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(body, { status: "ok" });
+});
+
+test("resolvePort falls back to 3000 when PORT is missing", () => {
+  assert.equal(resolvePort(undefined), 3000);
+});
+
+test("resolvePort falls back to 3000 when PORT is non-numeric", () => {
+  assert.equal(resolvePort("abc"), 3000);
+});
+
+test("resolvePort falls back to 3000 when PORT is out of range", () => {
+  assert.equal(resolvePort("0"), 3000);
+  assert.equal(resolvePort("65536"), 3000);
+});
+
+test("resolvePort returns numeric PORT values in range", () => {
+  assert.equal(resolvePort("3001"), 3001);
 });
