@@ -1,6 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { resolvePort } = require("../server");
+const { initializeHomepage } = require("../public/homepage");
 
 async function makeRequest(pathname) {
   const { app } = require("../server");
@@ -37,6 +38,10 @@ test("GET / returns the starter page", async () => {
   assert.match(body, /Express and EJS Starter/i);
   assert.match(body, /Simple Todo App/i);
   assert.match(body, /<link[^>]+href="\/styles\.css"/i);
+  assert.doesNotMatch(body, /<a[^>]+href="\/health"/i);
+  assert.match(body, /<button[^>]+type="button"[^>]*>Check health<\/button>/i);
+  assert.match(body, /data-health-status/i);
+  assert.match(body, /<script[^>]+src="\/homepage\.js"/i);
 });
 
 test("GET /styles.css serves the stylesheet asset", async () => {
@@ -46,6 +51,187 @@ test("GET /styles.css serves the stylesheet asset", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/css/i);
   assert.match(body, /body\s*\{/i);
+});
+
+function createElement(initialText = "") {
+  return {
+    dataset: {},
+    textContent: initialText,
+    disabled: false,
+    attributes: {},
+    listeners: new Map(),
+    setAttribute(name, value) {
+      this.attributes[name] = value;
+    },
+    addEventListener(eventName, listener) {
+      this.listeners.set(eventName, listener);
+    },
+    async click() {
+      const listener = this.listeners.get("click");
+
+      if (listener) {
+        await listener();
+      }
+    },
+  };
+}
+
+function createHomePageEnvironment(overrides = {}) {
+  const button = createElement("Check health");
+  const status = createElement("Health status will appear here.");
+  const toggle = createElement();
+  const label = createElement("Dark mode");
+  const root = {
+    dataset: {},
+    style: {},
+  };
+  const fetchCalls = [];
+  const timeoutEntries = [];
+
+  const environment = {
+    localStorage: {
+      getItem: () => null,
+      setItem: () => {},
+    },
+    matchMedia: () => ({ matches: false }),
+    document: {
+      documentElement: root,
+      querySelector(selector) {
+        if (selector === ".theme-toggle") {
+          return toggle;
+        }
+
+        if (selector === ".theme-toggle__label") {
+          return label;
+        }
+
+        if (selector === "[data-health-button]") {
+          return button;
+        }
+
+        if (selector === "[data-health-status]") {
+          return status;
+        }
+
+        return null;
+      },
+    },
+    fetch: async (url, options) => {
+      fetchCalls.push({ url, options });
+
+      return {
+        ok: true,
+        async json() {
+          return { status: "ok" };
+        },
+      };
+    },
+    AbortController: class AbortController {
+      constructor() {
+        this.signal = {};
+      }
+
+      abort() {
+        this.signal.aborted = true;
+      }
+    },
+    setTimeout(callback, delay) {
+      const entry = { callback, delay };
+      timeoutEntries.push(entry);
+      return entry;
+    },
+    clearTimeout(timerId) {
+      const timerIndex = timeoutEntries.indexOf(timerId);
+
+      if (timerIndex >= 0) {
+        timeoutEntries.splice(timerIndex, 1);
+      }
+    },
+    ...overrides,
+  };
+
+  return {
+    environment,
+    button,
+    status,
+    label,
+    root,
+    fetchCalls,
+    timeoutEntries,
+  };
+}
+
+test("initializeHomepage waits for a click before checking health", () => {
+  const { environment, fetchCalls, status } = createHomePageEnvironment();
+
+  initializeHomepage(environment);
+
+  assert.equal(fetchCalls.length, 0);
+  assert.equal(status.textContent, "Health status will appear here.");
+});
+
+test("initializeHomepage shows backend status after a successful health check", async () => {
+  const { environment, button, status, fetchCalls, timeoutEntries } =
+    createHomePageEnvironment();
+
+  initializeHomepage(environment);
+  await button.click();
+
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(fetchCalls[0].url, "/health");
+  assert.equal(status.dataset.state, "success");
+  assert.equal(status.textContent, "Backend status: ok");
+  assert.equal(button.disabled, false);
+  assert.equal(timeoutEntries.length, 0);
+});
+
+test("initializeHomepage restores the UI when the health check times out", async () => {
+  let abortSignal;
+  const { environment, button, status, fetchCalls, timeoutEntries } =
+    createHomePageEnvironment({
+      fetch: async (url, options) => {
+        fetchCalls.push({ url, options });
+        abortSignal = options.signal;
+
+        return new Promise((_resolve, reject) => {
+          abortSignal.onabort = () => {
+            const error = new Error("The operation was aborted.");
+            error.name = "AbortError";
+            reject(error);
+          };
+        });
+      },
+      AbortController: class AbortController {
+        constructor() {
+          this.signal = { aborted: false, onabort: null };
+        }
+
+        abort() {
+          this.signal.aborted = true;
+
+          if (typeof this.signal.onabort === "function") {
+            this.signal.onabort();
+          }
+        }
+      },
+    });
+
+  initializeHomepage(environment);
+  const clickPromise = button.click();
+
+  assert.equal(status.dataset.state, "loading");
+  assert.equal(button.disabled, true);
+  assert.equal(timeoutEntries.length, 1);
+
+  timeoutEntries[0].callback();
+  await clickPromise;
+
+  assert.equal(fetchCalls.length, 1);
+  assert.equal(abortSignal.aborted, true);
+  assert.equal(status.dataset.state, "error");
+  assert.equal(status.textContent, "Backend status: unavailable");
+  assert.equal(button.disabled, false);
+  assert.equal(timeoutEntries.length, 0);
 });
 
 test("GET /health returns ok status", async () => {
