@@ -82,6 +82,18 @@ function toggleTodo(id) {
   return todo;
 }
 
+function deleteTodo(id) {
+  const index = todos.findIndex((candidateTodo) => candidateTodo.id === id);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  const [deletedTodo] = todos.splice(index, 1);
+
+  return deletedTodo;
+}
+
 function resetTodos() {
   todos.length = 0;
   nextTodoId = 1;
@@ -163,6 +175,14 @@ app.post("/todos/:id/toggle", (request, response) => {
   response.redirect(filterRedirectPath(filter));
 });
 
+app.post("/todos/:id/delete", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const filter = normalizeFilter(request.body?.filter);
+
+  deleteTodo(todoId);
+  response.redirect(filterRedirectPath(filter));
+});
+
 app.post("/todos/clear-completed", (request, response) => {
   const filter = normalizeFilter(request.body?.filter);
 
@@ -184,6 +204,7 @@ module.exports = {
   app,
   clearCompletedTodos,
   createTodo,
+  deleteTodo,
   getItemsLeftCount,
   getTodos,
   hasCompletedTodos,

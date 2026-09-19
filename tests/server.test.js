@@ -387,6 +387,162 @@ test("POST /todos/clear-completed preserves the active filter on redirect", asyn
   assert.equal(clearResponse.headers.get("location"), "/?filter=active");
 });
 
+test("POST /todos/:id/delete removes only that todo and keeps the counter correct", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  const deleteResponse = await makeRequest(`/todos/${firstTodo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+
+  const remainingTodos = getTodos();
+
+  assert.equal(remainingTodos.length, 1);
+  assert.equal(remainingTodos[0].text, "Buy eggs");
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/delete on a completed todo does not change the items-left count", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Active%20todo",
+  });
+
+  const [completedTodo] = getTodos();
+
+  await makeRequest(`/todos/${completedTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  await makeRequest(`/todos/${completedTodo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Completed todo/i);
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/delete preserves the current filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const deleteResponse = await makeRequest(`/todos/${todo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+  assert.equal(deleteResponse.headers.get("location"), "/?filter=completed");
+});
+
+test("POST /todos/:id/delete with an unknown id is a safe no-op", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const deleteResponse = await makeRequest("/todos/999999/delete", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Buy milk/i);
+  assert.match(body, /1 item left/i);
+});
+
+test("GET / renders an accessible delete button for each todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /<form[^>]+action="\/todos\/\d+\/delete"/i);
+  assert.match(body, /aria-label="Delete Buy milk"/i);
+});
+
 test("POST /todos with blank content shows a validation error", async () => {
   const response = await makeRequest("/todos", {
     method: "POST",

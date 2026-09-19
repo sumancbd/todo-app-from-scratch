@@ -98,6 +98,10 @@
                   />
                   <span><%= todo.text %></span>
                 </form>
+                <form class="todo-delete-form" action="/todos/<%= todo.id %>/delete" method="post">
+                  <input type="hidden" name="filter" value="<%= filter %>" />
+                  <button class="todo-delete" type="submit" aria-label="Delete <%= todo.text %>">Delete</button>
+                </form>
               </li>
             <% }) %>
           </ol>
