@@ -62,6 +62,10 @@ function getItemsLeftCount() {
   return todos.filter((todo) => !todo.completed).length;
 }
 
+function hasCompletedTodos() {
+  return todos.some((todo) => todo.completed);
+}
+
 function toggleTodo(id) {
   const todo = todos.find((candidateTodo) => candidateTodo.id === id);
 
@@ -79,6 +83,14 @@ function resetTodos() {
   nextTodoId = 1;
 }
 
+function clearCompletedTodos() {
+  for (let index = todos.length - 1; index >= 0; index -= 1) {
+    if (todos[index].completed) {
+      todos.splice(index, 1);
+    }
+  }
+}
+
 function normalizeFilter(filterValue) {
   return filterValue === "active" ? "active" : "all";
 }
@@ -90,6 +102,7 @@ function renderHomepage(response, viewModel = {}) {
     title: "Simple Todo App",
     todos: getTodos({ filter }),
     itemsLeft: getItemsLeftCount(),
+    hasCompletedTodos: hasCompletedTodos(),
     formError: "",
     todoValue: "",
     ...viewModel,
@@ -138,6 +151,13 @@ app.post("/todos/:id/toggle", (request, response) => {
   response.redirect(filter === "active" ? "/?filter=active" : "/");
 });
 
+app.post("/todos/clear-completed", (request, response) => {
+  const filter = normalizeFilter(request.body?.filter);
+
+  clearCompletedTodos();
+  response.redirect(filter === "active" ? "/?filter=active" : "/");
+});
+
 app.get("/health", (_request, response) => {
   response.json({ status: "ok" });
 });
@@ -150,9 +170,11 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  clearCompletedTodos,
   createTodo,
   getItemsLeftCount,
   getTodos,
+  hasCompletedTodos,
   normalizeTodoText,
   resetTodos,
   resolvePort,

@@ -96,6 +96,12 @@
             <% }) %>
           </ol>
         <% } %>
+        <% if (hasCompletedTodos) { %>
+          <form class="todo-clear-completed-form" action="/todos/clear-completed" method="post">
+            <input type="hidden" name="filter" value="<%= filter %>" />
+            <button class="cta cta-secondary" type="submit">Clear completed</button>
+          </form>
+        <% } %>
       </section>
       <section class="health-panel" aria-labelledby="health-check-title">
         <div class="section-heading">

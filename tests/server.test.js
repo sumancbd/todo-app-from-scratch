@@ -164,6 +164,125 @@ test("GET /?filter=active hides completed todos while the default view keeps sho
   assert.match(activeBody, /You do not have any active todos\./i);
 });
 
+test("GET / does not show Clear completed when no todos are completed", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Clear completed/i);
+});
+
+test("GET / shows Clear completed once a todo is marked done", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Clear completed/i);
+});
+
+test("POST /todos/clear-completed removes completed todos, keeps active ones, and preserves the counter", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  await makeRequest(`/todos/${firstTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/");
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Completed todo/i);
+  assert.match(body, /Buy eggs/i);
+  assert.match(body, /1 item left/i);
+  assert.doesNotMatch(body, /Clear completed/i);
+});
+
+test("POST /todos/clear-completed preserves the active filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=active",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/?filter=active");
+});
+
 test("POST /todos with blank content shows a validation error", async () => {
   const response = await makeRequest("/todos", {
     method: "POST",
