@@ -543,6 +543,125 @@ test("GET / renders an accessible delete button for each todo", async () => {
   assert.match(body, /aria-label="Delete Buy milk"/i);
 });
 
+test("GET / renders an accessible edit button for each todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /<a[^>]+href="\/\?editing=\d+&filter=all"[^>]*>Edit<\/a>/i);
+  assert.match(body, /aria-label="Edit Buy milk"/i);
+});
+
+test("GET /?editing=<id> shows that todo as an edit form and hides its toggle/delete controls", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const response = await makeRequest(`/?editing=${todo.id}`);
+  const body = await response.text();
+
+  assert.match(body, /<form class="todo-edit-form" action="\/todos\/\d+\/edit"/i);
+  assert.match(body, /value="Buy milk"/i);
+  assert.match(body, />Save<\/button>/i);
+  assert.match(body, />Cancel<\/a>/i);
+  assert.doesNotMatch(body, /todo-toggle-form/i);
+  assert.doesNotMatch(body, /todo-delete-form/i);
+});
+
+test("POST /todos/:id/edit updates the text and preserves the current filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const editResponse = await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Buy%20oat%20milk&filter=active",
+    redirect: "manual",
+  });
+
+  assert.equal(editResponse.status, 302);
+  assert.equal(editResponse.headers.get("location"), "/?filter=active");
+  assert.equal(getTodos()[0].text, "Buy oat milk");
+});
+
+test("POST /todos/:id/edit with blank text shows the same validation error as creating a todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const editResponse = await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=%20%20%20",
+  });
+  const body = await editResponse.text();
+
+  assert.equal(editResponse.status, 400);
+  assert.match(body, /Please enter a todo before saving\./i);
+  assert.match(body, /<form class="todo-edit-form" action="\/todos\/\d+\/edit"/i);
+  assert.equal(getTodos()[0].text, "Buy milk");
+});
+
+test("POST /todos/:id/edit with an unknown id is a safe no-op", async () => {
+  const editResponse = await makeRequest("/todos/999999/edit", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Anything",
+    redirect: "manual",
+  });
+
+  assert.equal(editResponse.status, 302);
+});
+
+test("GET / renders a Cancel link back to the current filter while editing", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const response = await makeRequest(`/?editing=${todo.id}&filter=active`);
+  const body = await response.text();
+
+  assert.match(body, /href="\/\?filter=active">Cancel<\/a>/i);
+});
+
 test("POST /todos with blank content shows a validation error", async () => {
   const response = await makeRequest("/todos", {
     method: "POST",
