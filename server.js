@@ -55,6 +55,10 @@ function getTodos({ filter } = {}) {
     return todos.filter((todo) => !todo.completed);
   }
 
+  if (filter === "completed") {
+    return todos.filter((todo) => todo.completed);
+  }
+
   return [...todos];
 }
 
@@ -92,7 +96,15 @@ function clearCompletedTodos() {
 }
 
 function normalizeFilter(filterValue) {
-  return filterValue === "active" ? "active" : "all";
+  if (filterValue === "active" || filterValue === "completed") {
+    return filterValue;
+  }
+
+  return "all";
+}
+
+function filterRedirectPath(filter) {
+  return filter === "all" ? "/" : `/?filter=${filter}`;
 }
 
 function renderHomepage(response, viewModel = {}) {
@@ -140,7 +152,7 @@ app.post("/todos", (request, response) => {
   }
 
   createTodo(todoText);
-  response.redirect(filter === "active" ? "/?filter=active" : "/");
+  response.redirect(filterRedirectPath(filter));
 });
 
 app.post("/todos/:id/toggle", (request, response) => {
@@ -148,14 +160,14 @@ app.post("/todos/:id/toggle", (request, response) => {
   const filter = normalizeFilter(request.body?.filter);
 
   toggleTodo(todoId);
-  response.redirect(filter === "active" ? "/?filter=active" : "/");
+  response.redirect(filterRedirectPath(filter));
 });
 
 app.post("/todos/clear-completed", (request, response) => {
   const filter = normalizeFilter(request.body?.filter);
 
   clearCompletedTodos();
-  response.redirect(filter === "active" ? "/?filter=active" : "/");
+  response.redirect(filterRedirectPath(filter));
 });
 
 app.get("/health", (_request, response) => {
