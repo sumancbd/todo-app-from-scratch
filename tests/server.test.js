@@ -3,8 +3,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { beforeEach } = require("node:test");
-const { resetTodos, resolvePort } = require("../server");
-const { initializeHomepage } = require("../public/homepage");
+const { getTodos, resetTodos, resolvePort } = require("../server");
+const { initializeHomepage, initializeTodoToggle } = require("../public/homepage");
 
 async function makeRequest(pathname, options = {}) {
   const { app } = require("../server");
@@ -84,6 +84,84 @@ test("GET / renders created todos", async () => {
   assert.equal(response.status, 200);
   assert.match(body, /Buy milk/i);
   assert.doesNotMatch(body, /You do not have any todos yet\./i);
+});
+
+test("GET / shows the items-left counter after creating a todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20groceries",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/toggle marks a todo completed and reduces items left", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const toggleResponse = await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(toggleResponse.status, 302);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /0 items left/i);
+  assert.match(
+    body,
+    /data-completed="true"[^]*?Buy milk/i,
+  );
+});
+
+test("GET /?filter=active hides completed todos while the default view keeps showing them", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const allResponse = await makeRequest("/");
+  const allBody = await allResponse.text();
+
+  assert.match(allBody, /Completed todo/i);
+
+  const activeResponse = await makeRequest("/?filter=active");
+  const activeBody = await activeResponse.text();
+
+  assert.doesNotMatch(activeBody, /Completed todo/i);
+  assert.match(activeBody, /You do not have any active todos\./i);
 });
 
 test("POST /todos with blank content shows a validation error", async () => {
@@ -228,6 +306,42 @@ function createHomePageEnvironment(overrides = {}) {
     timeoutEntries,
   };
 }
+
+function createTodoToggleElement() {
+  return {
+    listeners: new Map(),
+    addEventListener(eventName, listener) {
+      this.listeners.set(eventName, listener);
+    },
+    change() {
+      const listener = this.listeners.get("change");
+
+      if (listener) {
+        listener();
+      }
+    },
+  };
+}
+
+test("initializeTodoToggle submits a todo's form when its checkbox changes", () => {
+  const checkbox = createTodoToggleElement();
+  const submitCalls = [];
+  const form = {
+    querySelector: (selector) => (selector === ".todo-toggle" ? checkbox : null),
+    requestSubmit: () => submitCalls.push(true),
+  };
+  const environment = {
+    document: {
+      querySelectorAll: (selector) =>
+        selector === "[data-todo-toggle-form]" ? [form] : [],
+    },
+  };
+
+  initializeTodoToggle(environment);
+  checkbox.change();
+
+  assert.equal(submitCalls.length, 1);
+});
 
 test("initializeHomepage waits for a click before checking health", () => {
   const { environment, fetchCalls, status } = createHomePageEnvironment();

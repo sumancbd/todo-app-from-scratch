@@ -49,6 +49,7 @@
             />
             <button class="cta" type="submit">Add todo</button>
           </div>
+          <input type="hidden" name="filter" value="<%= filter %>" />
           <% if (formError) { %>
             <p class="form-message" data-state="error" aria-live="polite"><%= formError %></p>
           <% } %>
@@ -57,14 +58,41 @@
       <section class="todo-panel" aria-labelledby="todo-list-title">
         <div class="section-heading">
           <h2 id="todo-list-title">Todo list</h2>
-          <p><%= todos.length %> item<%= todos.length === 1 ? "" : "s" %> in memory.</p>
+          <p><%= itemsLeft %> item<%= itemsLeft === 1 ? "" : "s" %> left</p>
         </div>
+        <nav class="todo-filters" aria-label="Filter todos">
+          <a
+            class="todo-filters__link"
+            data-active="<%= filter === "all" %>"
+            aria-current="<%= filter === "all" ? "page" : "false" %>"
+            href="/?filter=all"
+          >All</a>
+          <a
+            class="todo-filters__link"
+            data-active="<%= filter === "active" %>"
+            aria-current="<%= filter === "active" ? "page" : "false" %>"
+            href="/?filter=active"
+          >Active</a>
+        </nav>
         <% if (todos.length === 0) { %>
-          <p class="empty-state">You do not have any todos yet.</p>
+          <p class="empty-state">
+            <%= filter === "active" ? "You do not have any active todos." : "You do not have any todos yet." %>
+          </p>
         <% } else { %>
           <ol class="todo-list">
             <% todos.forEach((todo) => { %>
-              <li class="todo-list__item"><span><%= todo.text %></span></li>
+              <li class="todo-list__item" data-completed="<%= todo.completed %>">
+                <form class="todo-toggle-form" action="/todos/<%= todo.id %>/toggle" method="post" data-todo-toggle-form>
+                  <input type="hidden" name="filter" value="<%= filter %>" />
+                  <input
+                    type="checkbox"
+                    class="todo-toggle"
+                    aria-label="Toggle <%= todo.text %>"
+                    <%= todo.completed ? "checked" : "" %>
+                  />
+                  <span><%= todo.text %></span>
+                </form>
+              </li>
             <% }) %>
           </ol>
         <% } %>
