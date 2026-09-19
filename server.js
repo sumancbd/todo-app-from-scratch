@@ -42,12 +42,46 @@ function createTodo(todoText) {
     id: nextTodoId,
     text: todoText,
     completed: false,
+    createdAt: Date.now(),
   };
 
   nextTodoId += 1;
   todos.push(todo);
 
   return todo;
+}
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function pluralize(count, unit) {
+  return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+}
+
+function formatAddedTime(createdAt, now = Date.now()) {
+  const elapsedMs = now - createdAt;
+
+  if (elapsedMs < MINUTE_MS) {
+    return "just now";
+  }
+
+  if (elapsedMs < HOUR_MS) {
+    return pluralize(Math.floor(elapsedMs / MINUTE_MS), "minute");
+  }
+
+  if (elapsedMs < DAY_MS) {
+    return pluralize(Math.floor(elapsedMs / HOUR_MS), "hour");
+  }
+
+  return pluralize(Math.floor(elapsedMs / DAY_MS), "day");
+}
+
+function withAddedLabels(todosList, now = Date.now()) {
+  return todosList.map((todo) => ({
+    ...todo,
+    addedLabel: formatAddedTime(todo.createdAt, now),
+  }));
 }
 
 function getTodos({ filter } = {}) {
@@ -136,7 +170,7 @@ function renderHomepage(response, viewModel = {}) {
 
   response.render("index", {
     title: "Simple Todo App",
-    todos: getTodos({ filter }),
+    todos: withAddedLabels(getTodos({ filter })),
     itemsLeft: getItemsLeftCount(),
     hasCompletedTodos: hasCompletedTodos(),
     formError: "",
@@ -246,6 +280,7 @@ module.exports = {
   clearCompletedTodos,
   createTodo,
   deleteTodo,
+  formatAddedTime,
   getItemsLeftCount,
   getTodos,
   hasCompletedTodos,

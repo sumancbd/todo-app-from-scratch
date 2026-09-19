@@ -270,9 +270,21 @@ h2 {
 
 .todo-list__item {
   display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.todo-list__item-row {
+  display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+}
+
+.todo-added {
+  padding-left: 0.9rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
 }
 
 .todo-toggle-form {

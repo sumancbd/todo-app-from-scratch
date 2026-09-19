@@ -89,40 +89,45 @@
             <% todos.forEach((todo) => { %>
               <li class="todo-list__item" data-completed="<%= todo.completed %>">
                 <% if (todo.id === editingId) { %>
-                  <form class="todo-edit-form" action="/todos/<%= todo.id %>/edit" method="post">
-                    <input type="hidden" name="filter" value="<%= filter %>" />
-                    <label class="sr-only" for="todo-edit-<%= todo.id %>">Edit todo</label>
-                    <input
-                      id="todo-edit-<%= todo.id %>"
-                      name="text"
-                      type="text"
-                      value="<%= editError ? editValue : todo.text %>"
-                      maxlength="120"
-                      autocomplete="off"
-                    />
-                    <button class="cta" type="submit">Save</button>
-                    <a class="cta cta-secondary" href="<%= filter === "all" ? "/" : "/?filter=" + filter %>">Cancel</a>
-                    <% if (editError) { %>
-                      <p class="form-message" data-state="error" aria-live="polite"><%= editError %></p>
-                    <% } %>
-                  </form>
+                  <div class="todo-list__item-row">
+                    <form class="todo-edit-form" action="/todos/<%= todo.id %>/edit" method="post">
+                      <input type="hidden" name="filter" value="<%= filter %>" />
+                      <label class="sr-only" for="todo-edit-<%= todo.id %>">Edit todo</label>
+                      <input
+                        id="todo-edit-<%= todo.id %>"
+                        name="text"
+                        type="text"
+                        value="<%= editError ? editValue : todo.text %>"
+                        maxlength="120"
+                        autocomplete="off"
+                      />
+                      <button class="cta" type="submit">Save</button>
+                      <a class="cta cta-secondary" href="<%= filter === "all" ? "/" : "/?filter=" + filter %>">Cancel</a>
+                      <% if (editError) { %>
+                        <p class="form-message" data-state="error" aria-live="polite"><%= editError %></p>
+                      <% } %>
+                    </form>
+                  </div>
                 <% } else { %>
-                  <form class="todo-toggle-form" action="/todos/<%= todo.id %>/toggle" method="post" data-todo-toggle-form>
-                    <input type="hidden" name="filter" value="<%= filter %>" />
-                    <input
-                      type="checkbox"
-                      class="todo-toggle"
-                      aria-label="Toggle <%= todo.text %>"
-                      <%= todo.completed ? "checked" : "" %>
-                    />
-                    <span><%= todo.text %></span>
-                  </form>
-                  <a class="todo-edit" href="/?editing=<%= todo.id %>&filter=<%= filter %>" aria-label="Edit <%= todo.text %>">Edit</a>
-                  <form class="todo-delete-form" action="/todos/<%= todo.id %>/delete" method="post">
-                    <input type="hidden" name="filter" value="<%= filter %>" />
-                    <button class="todo-delete" type="submit" aria-label="Delete <%= todo.text %>">Delete</button>
-                  </form>
+                  <div class="todo-list__item-row">
+                    <form class="todo-toggle-form" action="/todos/<%= todo.id %>/toggle" method="post" data-todo-toggle-form>
+                      <input type="hidden" name="filter" value="<%= filter %>" />
+                      <input
+                        type="checkbox"
+                        class="todo-toggle"
+                        aria-label="Toggle <%= todo.text %>"
+                        <%= todo.completed ? "checked" : "" %>
+                      />
+                      <span><%= todo.text %></span>
+                    </form>
+                    <a class="todo-edit" href="/?editing=<%= todo.id %>&filter=<%= filter %>" aria-label="Edit <%= todo.text %>">Edit</a>
+                    <form class="todo-delete-form" action="/todos/<%= todo.id %>/delete" method="post">
+                      <input type="hidden" name="filter" value="<%= filter %>" />
+                      <button class="todo-delete" type="submit" aria-label="Delete <%= todo.text %>">Delete</button>
+                    </form>
+                  </div>
                 <% } %>
+                <p class="todo-added">Added <%= todo.addedLabel %></p>
               </li>
             <% }) %>
           </ol>
