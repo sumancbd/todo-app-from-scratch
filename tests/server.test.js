@@ -164,6 +164,110 @@ test("GET /?filter=active hides completed todos while the default view keeps sho
   assert.match(activeBody, /You do not have any active todos\./i);
 });
 
+test("GET /?filter=completed shows only completed todos and hides active ones", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Active%20todo",
+  });
+
+  const [completedTodo] = getTodos();
+
+  await makeRequest(`/todos/${completedTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/?filter=completed");
+  const body = await response.text();
+
+  assert.match(body, /Completed todo/i);
+  assert.doesNotMatch(body, /Active todo/i);
+});
+
+test("GET /?filter=completed shows an empty state when no todos are completed", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/?filter=completed");
+  const body = await response.text();
+
+  assert.match(body, /You do not have any completed todos\./i);
+});
+
+test("POST /todos/:id/toggle preserves the completed filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const toggleResponse = await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(toggleResponse.status, 302);
+  assert.equal(toggleResponse.headers.get("location"), "/?filter=completed");
+});
+
+test("POST /todos/clear-completed preserves the completed filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/?filter=completed");
+});
+
 test("GET / does not show Clear completed when no todos are completed", async () => {
   await makeRequest("/todos", {
     method: "POST",

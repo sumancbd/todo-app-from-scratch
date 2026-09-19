@@ -73,10 +73,16 @@
             aria-current="<%= filter === "active" ? "page" : "false" %>"
             href="/?filter=active"
           >Active</a>
+          <a
+            class="todo-filters__link"
+            data-active="<%= filter === "completed" %>"
+            aria-current="<%= filter === "completed" ? "page" : "false" %>"
+            href="/?filter=completed"
+          >Completed</a>
         </nav>
         <% if (todos.length === 0) { %>
           <p class="empty-state">
-            <%= filter === "active" ? "You do not have any active todos." : "You do not have any todos yet." %>
+            <% if (filter === "active") { %>You do not have any active todos.<% } else if (filter === "completed") { %>You do not have any completed todos.<% } else { %>You do not have any todos yet.<% } %>
           </p>
         <% } else { %>
           <ol class="todo-list">
