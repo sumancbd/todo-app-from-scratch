@@ -41,6 +41,7 @@ function createTodo(todoText) {
   const todo = {
     id: nextTodoId,
     text: todoText,
+    completed: false,
   };
 
   nextTodoId += 1;
@@ -49,8 +50,28 @@ function createTodo(todoText) {
   return todo;
 }
 
-function getTodos() {
+function getTodos({ filter } = {}) {
+  if (filter === "active") {
+    return todos.filter((todo) => !todo.completed);
+  }
+
   return [...todos];
+}
+
+function getItemsLeftCount() {
+  return todos.filter((todo) => !todo.completed).length;
+}
+
+function toggleTodo(id) {
+  const todo = todos.find((candidateTodo) => candidateTodo.id === id);
+
+  if (!todo) {
+    return undefined;
+  }
+
+  todo.completed = !todo.completed;
+
+  return todo;
 }
 
 function resetTodos() {
@@ -58,13 +79,21 @@ function resetTodos() {
   nextTodoId = 1;
 }
 
+function normalizeFilter(filterValue) {
+  return filterValue === "active" ? "active" : "all";
+}
+
 function renderHomepage(response, viewModel = {}) {
+  const filter = normalizeFilter(viewModel.filter);
+
   response.render("index", {
     title: "Simple Todo App",
-    todos: getTodos(),
+    todos: getTodos({ filter }),
+    itemsLeft: getItemsLeftCount(),
     formError: "",
     todoValue: "",
     ...viewModel,
+    filter,
   });
 }
 
@@ -76,8 +105,8 @@ app.set("views", viewsDir);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.static(publicDir));
 
-app.get("/", (_request, response) => {
-  renderHomepage(response);
+app.get("/", (request, response) => {
+  renderHomepage(response, { filter: request.query?.filter });
 });
 
 app.post("/todos", (request, response) => {
@@ -85,18 +114,28 @@ app.post("/todos", (request, response) => {
     ? request.body.todo
     : "";
   const todoText = normalizeTodoText(todoValue);
+  const filter = normalizeFilter(request.body?.filter);
 
   if (!todoText) {
     response.status(400);
     renderHomepage(response, {
       formError: "Please enter a todo before saving.",
       todoValue,
+      filter,
     });
     return;
   }
 
   createTodo(todoText);
-  response.redirect("/");
+  response.redirect(filter === "active" ? "/?filter=active" : "/");
+});
+
+app.post("/todos/:id/toggle", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const filter = normalizeFilter(request.body?.filter);
+
+  toggleTodo(todoId);
+  response.redirect(filter === "active" ? "/?filter=active" : "/");
 });
 
 app.get("/health", (_request, response) => {
@@ -112,8 +151,10 @@ if (require.main === module) {
 module.exports = {
   app,
   createTodo,
+  getItemsLeftCount,
   getTodos,
   normalizeTodoText,
   resetTodos,
   resolvePort,
+  toggleTodo,
 };
