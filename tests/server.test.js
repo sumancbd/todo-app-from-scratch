@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { beforeEach } = require("node:test");
-const { getTodos, resetTodos, resolvePort } = require("../server");
+const { formatAddedTime, getTodos, resetTodos, resolvePort } = require("../server");
 const { initializeHomepage, initializeTodoToggle } = require("../public/homepage");
 
 async function makeRequest(pathname, options = {}) {
@@ -67,6 +67,38 @@ test("POST /todos creates a todo and redirects to the homepage", async () => {
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.get("location"), "/");
+});
+
+test("POST /todos records when the todo was created", async () => {
+  const beforeCreate = Date.now();
+
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  assert.equal(typeof todo.createdAt, "number");
+  assert.ok(todo.createdAt >= beforeCreate);
+});
+
+test("GET / shows an Added time under a newly created todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Added just now/i);
 });
 
 test("GET / renders created todos", async () => {
@@ -606,6 +638,29 @@ test("POST /todos/:id/edit updates the text and preserves the current filter on 
   assert.equal(getTodos()[0].text, "Buy oat milk");
 });
 
+test("POST /todos/:id/edit does not change the todo's added time", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+  const originalCreatedAt = todo.createdAt;
+
+  await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Buy%20oat%20milk",
+  });
+
+  assert.equal(getTodos()[0].createdAt, originalCreatedAt);
+});
+
 test("POST /todos/:id/edit with blank text shows the same validation error as creating a todo", async () => {
   await makeRequest("/todos", {
     method: "POST",
@@ -962,4 +1017,32 @@ test("resolvePort falls back to 3000 when PORT is out of range", () => {
 test("resolvePort returns numeric PORT values in range", () => {
   assert.equal(resolvePort("3001"), 3001);
   assert.equal(resolvePort(" 3002 "), 3002);
+});
+
+test("formatAddedTime shows 'just now' for under a minute", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now, now), "just now");
+  assert.equal(formatAddedTime(now - 59 * 1000, now), "just now");
+});
+
+test("formatAddedTime shows minutes ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 60 * 1000, now), "1 minute ago");
+  assert.equal(formatAddedTime(now - 5 * 60 * 1000, now), "5 minutes ago");
+});
+
+test("formatAddedTime shows hours ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 60 * 60 * 1000, now), "1 hour ago");
+  assert.equal(formatAddedTime(now - 2 * 60 * 60 * 1000, now), "2 hours ago");
+});
+
+test("formatAddedTime shows days ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 24 * 60 * 60 * 1000, now), "1 day ago");
+  assert.equal(formatAddedTime(now - 3 * 24 * 60 * 60 * 1000, now), "3 days ago");
 });
