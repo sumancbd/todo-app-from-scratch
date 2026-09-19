@@ -120,7 +120,8 @@ body {
 
 .theme-toggle:focus-visible,
 .cta:focus-visible,
-.todo-form input:focus-visible {
+.todo-form input:focus-visible,
+.todo-delete:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent);
   outline-offset: 3px;
 }
@@ -267,6 +268,13 @@ h2 {
   margin-top: 0.7rem;
 }
 
+.todo-list__item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
 .todo-toggle-form {
   display: flex;
   align-items: center;
@@ -278,6 +286,22 @@ h2 {
   padding: 0.75rem 0.9rem;
   border-radius: 0.95rem;
   background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.todo-delete {
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--danger);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.todo-delete:hover,
+.todo-delete:focus-visible {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .todo-list__item[data-completed="true"] span {
