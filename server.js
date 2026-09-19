@@ -94,6 +94,18 @@ function deleteTodo(id) {
   return deletedTodo;
 }
 
+function updateTodoText(id, text) {
+  const todo = todos.find((candidateTodo) => candidateTodo.id === id);
+
+  if (!todo) {
+    return undefined;
+  }
+
+  todo.text = text;
+
+  return todo;
+}
+
 function resetTodos() {
   todos.length = 0;
   nextTodoId = 1;
@@ -129,6 +141,9 @@ function renderHomepage(response, viewModel = {}) {
     hasCompletedTodos: hasCompletedTodos(),
     formError: "",
     todoValue: "",
+    editingId: null,
+    editError: "",
+    editValue: "",
     ...viewModel,
     filter,
   });
@@ -143,7 +158,10 @@ app.use(express.urlencoded({ extended: false }));
 app.use(express.static(publicDir));
 
 app.get("/", (request, response) => {
-  renderHomepage(response, { filter: request.query?.filter });
+  const parsedEditingId = Number.parseInt(request.query?.editing, 10);
+  const editingId = Number.isNaN(parsedEditingId) ? null : parsedEditingId;
+
+  renderHomepage(response, { filter: request.query?.filter, editingId });
 });
 
 app.post("/todos", (request, response) => {
@@ -183,6 +201,29 @@ app.post("/todos/:id/delete", (request, response) => {
   response.redirect(filterRedirectPath(filter));
 });
 
+app.post("/todos/:id/edit", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const rawText = typeof request.body?.text === "string"
+    ? request.body.text
+    : "";
+  const todoText = normalizeTodoText(rawText);
+  const filter = normalizeFilter(request.body?.filter);
+
+  if (!todoText) {
+    response.status(400);
+    renderHomepage(response, {
+      filter,
+      editingId: todoId,
+      editError: "Please enter a todo before saving.",
+      editValue: rawText,
+    });
+    return;
+  }
+
+  updateTodoText(todoId, todoText);
+  response.redirect(filterRedirectPath(filter));
+});
+
 app.post("/todos/clear-completed", (request, response) => {
   const filter = normalizeFilter(request.body?.filter);
 
@@ -212,4 +253,5 @@ module.exports = {
   resetTodos,
   resolvePort,
   toggleTodo,
+  updateTodoText,
 };
