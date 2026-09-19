@@ -254,7 +254,9 @@ h2 {
 }
 
 .todo-filters__link[data-active="true"] {
-  background: var(--toggle-background);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #f4fdff;
 }
 
 .todo-list {
