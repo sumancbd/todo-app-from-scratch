@@ -1,0 +1,19 @@
+{
+  "name": "todo-app-from-scratch",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A small todo app with a free limit and a Stripe upgrade, built to be tested.",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "stripe": "^16.12.0"
+  }
+}

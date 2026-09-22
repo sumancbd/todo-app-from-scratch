@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todos</title>
+    <style>
+      :root {
+        --ink: #1f2330;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --bg: #f7f7f9;
+        --card: #ffffff;
+        --accent: #4f46e5;
+        --good: #047857;
+        --bad: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 48px 16px;
+        font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      main { max-width: 620px; margin: 0 auto; }
+      h1 { font-size: 40px; font-weight: 300; text-align: center; margin: 0 0 24px; }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+        overflow: hidden;
+      }
+      .new { display: flex; gap: 8px; padding: 16px; border-bottom: 1px solid var(--line); }
+      .new input {
+        flex: 1; padding: 12px 14px; font-size: 16px;
+        border: 1px solid var(--line); border-radius: 8px;
+      }
+      .new button {
+        padding: 12px 18px; font-size: 15px; border: 0; border-radius: 8px;
+        background: var(--accent); color: #fff; cursor: pointer;
+      }
+      ul { list-style: none; margin: 0; padding: 0; }
+      li { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+      li.done label { text-decoration: line-through; color: var(--muted); }
+      li label { flex: 1; cursor: pointer; }
+      li button { border: 0; background: none; color: var(--muted); cursor: pointer; font-size: 18px; }
+      .foot { display: flex; align-items: center; gap: 12px; padding: 12px 16px; font-size: 14px; color: var(--muted); flex-wrap: wrap; }
+      .filters { display: flex; gap: 6px; margin-left: auto; }
+      .filters button {
+        border: 1px solid transparent; background: none; border-radius: 6px;
+        padding: 4px 10px; cursor: pointer; color: var(--muted); font-size: 14px;
+      }
+      .filters button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+      .plan { margin-top: 20px; padding: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .plan button {
+        padding: 10px 16px; border: 0; border-radius: 8px;
+        background: var(--accent); color: #fff; cursor: pointer; font-size: 15px;
+      }
+      .plan button[disabled] { background: #c7c9d1; cursor: not-allowed; }
+      .note { margin: 16px auto 0; max-width: 620px; padding: 12px 16px; border-radius: 8px; font-size: 15px; }
+      .note.good { background: #ecfdf5; color: var(--good); }
+      .note.bad { background: #fef2f2; color: var(--bad); }
+      .empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Todos</h1>
+
+      <p id="message" class="note" hidden></p>
+
+      <section class="card">
+        <form class="new" id="new-todo-form">
+          <input
+            id="new-todo"
+            name="title"
+            aria-label="What needs doing?"
+            placeholder="What needs doing?"
+            autocomplete="off"
+          />
+          <button type="submit">Add</button>
+        </form>
+
+        <ul id="list"></ul>
+        <p class="empty" id="empty" hidden>Nothing here yet.</p>
+
+        <div class="foot">
+          <span id="count">0 items left</span>
+          <span class="filters">
+            <button type="button" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-filter="active" aria-pressed="false">Active</button>
+            <button type="button" data-filter="completed" aria-pressed="false">Completed</button>
+          </span>
+          <button type="button" id="clear-completed">Clear completed</button>
+        </div>
+      </section>
+
+      <section class="card plan">
+        <strong id="plan-name">Free plan</strong>
+        <span id="plan-detail"></span>
+        <button type="button" id="upgrade" style="margin-left:auto">Upgrade to Pro — £5</button>
+      </section>
+    </main>
+
+    <script>
+      let filter = 'all';
+      let state = { todos: [], left: 0, pro: false, freeLimit: 5, stripeReady: false };
+
+      const $ = (id) => document.getElementById(id);
+
+      function say(text, kind) {
+        const box = $('message');
+        if (!text) { box.hidden = true; return; }
+        box.textContent = text;
+        box.className = 'note ' + (kind || 'good');
+        box.hidden = false;
+      }
+
+      function draw() {
+        const list = $('list');
+        list.textContent = '';
+        const shown = state.todos.filter((t) =>
+          filter === 'active' ? !t.done : filter === 'completed' ? t.done : true);
+
+        for (const todo of shown) {
+          const li = document.createElement('li');
+          if (todo.done) li.className = 'done';
+
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.checked = todo.done;
+          box.id = 'todo-' + todo.id;
+          box.setAttribute('aria-label', (todo.done ? 'Mark not done: ' : 'Mark done: ') + todo.title);
+          box.addEventListener('change', () => toggle(todo.id, box.checked));
+
+          const label = document.createElement('label');
+          label.htmlFor = box.id;
+          label.textContent = todo.title;
+
+          const remove = document.createElement('button');
+          remove.type = 'button';
+          remove.textContent = '×';
+          remove.setAttribute('aria-label', 'Delete ' + todo.title);
+          remove.addEventListener('click', () => destroy(todo.id));
+
+          li.append(box, label, remove);
+          list.append(li);
+        }
+
+        $('empty').hidden = shown.length > 0;
+        $('count').textContent = state.left + (state.left === 1 ? ' item left' : ' items left');
+
+        $('plan-name').textContent = state.pro ? 'Pro plan' : 'Free plan';
+        $('plan-detail').textContent = state.pro
+          ? 'Unlimited todos.'
+          : state.todos.length + ' of ' + state.freeLimit + ' todos used.';
+        const upgrade = $('upgrade');
+        upgrade.hidden = state.pro;
+        upgrade.disabled = !state.stripeReady;
+        upgrade.title = state.stripeReady
+          ? 'Pay £5 to remove the limit'
+          : 'Payments are not set up on this copy of the app';
+
+        for (const button of document.querySelectorAll('.filters button')) {
+          button.setAttribute('aria-pressed', String(button.dataset.filter === filter));
+        }
+      }
+
+      async function load() {
+        const res = await fetch('/api/todos');
+        state = await res.json();
+        draw();
+      }
+
+      async function add(title) {
+        const res = await fetch('/api/todos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          say(body.error || 'That did not work.', 'bad');
+          return false;
+        }
+        say('');
+        await load();
+        return true;
+      }
+
+      async function toggle(id, done) {
+        await fetch('/api/todos/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ done }),
+        });
+        await load();
+      }
+
+      async function destroy(id) {
+        await fetch('/api/todos/' + id, { method: 'DELETE' });
+        await load();
+      }
+
+      $('new-todo-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = $('new-todo');
+        const title = input.value.trim();
+        if (!title) { say('A todo needs a title.', 'bad'); return; }
+        if (await add(title)) input.value = '';
+      });
+
+      for (const button of document.querySelectorAll('.filters button')) {
+        button.addEventListener('click', () => { filter = button.dataset.filter; draw(); });
+      }
+
+      $('clear-completed').addEventListener('click', async () => {
+        await fetch('/api/todos/clear-completed', { method: 'POST' });
+        await load();
+      });
+
+      $('upgrade').addEventListener('click', async () => {
+        const button = $('upgrade');
+        button.disabled = true;
+        try {
+          const res = await fetch('/api/checkout', { method: 'POST' });
+          const body = await res.json();
+          if (!res.ok) { say(body.error || 'Could not start the checkout.', 'bad'); return; }
+          window.location.href = body.url;
+        } finally {
+          button.disabled = !state.stripeReady;
+        }
+      });
+
+      // What came back from the payment, in words rather than a query string.
+      const outcome = new URLSearchParams(location.search).get('upgrade');
+      if (outcome === 'done') say('You are on Pro now — add as many todos as you like.', 'good');
+      if (outcome === 'cancelled') say('Payment cancelled — you are still on the free plan.', 'bad');
+      if (outcome === 'unpaid') say('That payment did not go through — you are still on the free plan.', 'bad');
+      if (outcome === 'unknown') say('We could not confirm that payment.', 'bad');
+      if (outcome) history.replaceState({}, '', '/');
+
+      load();
+    </script>
+  </body>
+</html>
