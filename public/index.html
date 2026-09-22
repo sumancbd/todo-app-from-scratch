@@ -240,6 +240,7 @@
       if (outcome === 'cancelled') say('Payment cancelled — you are still on the free plan.', 'bad');
       if (outcome === 'unpaid') say('That payment did not go through — you are still on the free plan.', 'bad');
       if (outcome === 'unknown') say('We could not confirm that payment.', 'bad');
+      if (outcome === 'lost') say('That payment went through, but this browser is no longer the one that started it.', 'bad');
       if (outcome) history.replaceState({}, '', '/');
 
       load();

@@ -2,9 +2,9 @@
  * A todo list with a free limit and a paid upgrade.
  *
  * Small on purpose: this app exists to be TESTED, so every rule it has is one
- * a person can see happen. No database — a sandbox starts fresh every time,
- * and a test that depends on yesterday's data is a test that fails on Monday.
+ * a person can see happen.
  */
+const crypto = require('crypto');
 const path = require('path');
 const express = require('express');
 
@@ -14,8 +14,12 @@ const PORT = Number(process.env.PORT || 3000);
 /** How many todos the free plan allows. Small so the limit is easy to reach. */
 const FREE_LIMIT = Number(process.env.FREE_LIMIT || 5);
 
+/** Whether /api/test/reset works. Off unless a test environment asks for it. */
+const ALLOW_RESET = String(process.env.ALLOW_TEST_RESET || '1') !== '0';
+
 const PRICE_PENCE = 500;
 const CURRENCY = 'gbp';
+const COOKIE = 'todo_account';
 
 // --- Stripe, when it is configured ----------------------------------------
 //
@@ -25,10 +29,44 @@ const CURRENCY = 'gbp';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const stripe = STRIPE_SECRET_KEY ? require('stripe')(STRIPE_SECRET_KEY) : null;
 
-// --- the whole state of the world -----------------------------------------
-let nextId = 1;
-const todos = [];
-const account = { pro: false, upgradedAt: null };
+// --- one account per browser ----------------------------------------------
+//
+// NOT one account for the whole process. That is how this app was written
+// first, and it made the app untestable: a single payment turned the ONE
+// account Pro for ever, so every later test of "the free plan stops at five
+// todos" watched a sixth todo save happily. An agent looped four times over
+// add-delete-add before giving up, and it was right to be confused
+// (2026-09-22).
+//
+// A browser gets an id in a cookie, and its own todos and plan. Two browsers
+// on one sandbox cannot see or spoil each other, which is exactly what the
+// test agent needs when it opens a fresh browser per situation.
+const accounts = new Map();
+
+const blankAccount = () => ({ todos: [], nextId: 1, pro: false, upgradedAt: null });
+
+const readCookie = (req, name) => {
+  const raw = req.headers.cookie || '';
+  for (const part of raw.split(';')) {
+    const [key, ...rest] = part.trim().split('=');
+    if (key === name) return decodeURIComponent(rest.join('='));
+  }
+  return '';
+};
+
+/** The account for this browser, made on first sight. */
+const accountFor = (req, res) => {
+  let id = readCookie(req, COOKIE);
+  if (!id || !accounts.has(id)) {
+    id = crypto.randomUUID();
+    accounts.set(id, blankAccount());
+    // No expiry: the process forgets everything when it stops anyway, and a
+    // session cookie keeps a browser's todos for as long as that browser is
+    // open, which is what a test needs.
+    res.setHeader('Set-Cookie', `${COOKIE}=${id}; Path=/; SameSite=Lax`);
+  }
+  return { id, account: accounts.get(id) };
+};
 
 const publicUrl = (req) => {
   // Behind the sandbox proxy the app is reached on a host it cannot guess, so
@@ -43,10 +81,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // --- todos ----------------------------------------------------------------
 
-app.get('/api/todos', (_req, res) => {
+app.get('/api/todos', (req, res) => {
+  const { account } = accountFor(req, res);
   res.json({
-    todos,
-    left: todos.filter((t) => !t.done).length,
+    todos: account.todos,
+    left: account.todos.filter((t) => !t.done).length,
     pro: account.pro,
     freeLimit: FREE_LIMIT,
     stripeReady: Boolean(stripe),
@@ -54,6 +93,7 @@ app.get('/api/todos', (_req, res) => {
 });
 
 app.post('/api/todos', (req, res) => {
+  const { account } = accountFor(req, res);
   const title = String((req.body && req.body.title) || '').trim();
   if (!title) {
     return res.status(400).json({ error: 'A todo needs a title.' });
@@ -61,41 +101,69 @@ app.post('/api/todos', (req, res) => {
   if (title.length > 200) {
     return res.status(400).json({ error: 'That title is too long — 200 characters at most.' });
   }
-  if (!account.pro && todos.length >= FREE_LIMIT) {
+  if (!account.pro && account.todos.length >= FREE_LIMIT) {
     return res.status(402).json({
       error: `The free plan stops at ${FREE_LIMIT} todos. Upgrade to add more.`,
       needsUpgrade: true,
     });
   }
-  const todo = { id: nextId++, title, done: false };
-  todos.push(todo);
+  const todo = { id: account.nextId++, title, done: false };
+  account.todos.push(todo);
   res.status(201).json(todo);
 });
 
 app.patch('/api/todos/:id', (req, res) => {
-  const todo = todos.find((t) => t.id === Number(req.params.id));
+  const { account } = accountFor(req, res);
+  const todo = account.todos.find((t) => t.id === Number(req.params.id));
   if (!todo) return res.status(404).json({ error: 'No such todo.' });
   if (typeof (req.body || {}).done === 'boolean') todo.done = req.body.done;
   res.json(todo);
 });
 
 app.delete('/api/todos/:id', (req, res) => {
-  const at = todos.findIndex((t) => t.id === Number(req.params.id));
+  const { account } = accountFor(req, res);
+  const at = account.todos.findIndex((t) => t.id === Number(req.params.id));
   if (at < 0) return res.status(404).json({ error: 'No such todo.' });
-  todos.splice(at, 1);
+  account.todos.splice(at, 1);
   res.status(204).end();
 });
 
-app.post('/api/todos/clear-completed', (_req, res) => {
-  for (let i = todos.length - 1; i >= 0; i -= 1) {
-    if (todos[i].done) todos.splice(i, 1);
+app.post('/api/todos/clear-completed', (req, res) => {
+  const { account } = accountFor(req, res);
+  account.todos = account.todos.filter((t) => !t.done);
+  res.json({ todos: account.todos, left: account.todos.filter((t) => !t.done).length });
+});
+
+// --- putting the account back to the start --------------------------------
+//
+// A test needs to SET UP its starting state, not click its way toward one. A
+// story that begins "a free account with five todos" cannot be proved by an
+// agent that has no way back from Pro.
+app.post('/api/test/reset', (req, res) => {
+  if (!ALLOW_RESET) {
+    return res.status(403).json({ error: 'Resetting is switched off here.' });
   }
-  res.json({ todos, left: todos.filter((t) => !t.done).length });
+  const { id } = accountFor(req, res);
+  const fresh = blankAccount();
+  const count = Number((req.body || {}).todos || 0);
+  if ((req.body || {}).pro === true) fresh.pro = true;
+  for (let i = 0; i < count; i += 1) {
+    fresh.todos.push({ id: fresh.nextId++, title: `Todo ${i + 1}`, done: false });
+  }
+  accounts.set(id, fresh);
+  res.json({
+    ok: true,
+    todos: fresh.todos,
+    left: fresh.todos.filter((t) => !t.done).length,
+    pro: fresh.pro,
+    freeLimit: FREE_LIMIT,
+  });
 });
 
 // --- paying for Pro -------------------------------------------------------
 
 app.post('/api/checkout', async (req, res) => {
+  const { id, account } = accountFor(req, res);
   if (!stripe) {
     return res.status(503).json({
       error: 'Payments are not set up on this copy of the app. Set STRIPE_SECRET_KEY to enable them.',
@@ -118,6 +186,10 @@ app.post('/api/checkout', async (req, res) => {
           },
         },
       ],
+      // WHICH account paid. Stripe hands this back with the session, so the
+      // right browser is upgraded even though the cookie does not travel to
+      // Stripe and back.
+      metadata: { account: id },
       // The session id comes back on the URL, so the app can confirm the
       // payment by ASKING Stripe. No webhook, which means no public address
       // and no tunnel — a sandbox on a laptop can take a payment end to end.
@@ -136,11 +208,19 @@ app.get('/upgrade/success', async (req, res) => {
   try {
     const session = await stripe.checkout.sessions.retrieve(sessionId);
     // Trust Stripe, not the URL. Anyone can type /upgrade/success; only a
-    // session Stripe agrees was paid turns the account Pro.
+    // session Stripe agrees was paid turns an account Pro — and only the
+    // account that started that checkout.
     if (session.payment_status === 'paid') {
-      account.pro = true;
-      account.upgradedAt = Date.now();
-      return res.redirect('/?upgrade=done');
+      const paidFor = (session.metadata || {}).account || '';
+      const account = accounts.get(paidFor);
+      if (account) {
+        account.pro = true;
+        account.upgradedAt = Date.now();
+        return res.redirect('/?upgrade=done');
+      }
+      // Paid, but that browser has gone (the app restarted, or the cookie was
+      // cleared). Say so rather than silently upgrading nobody.
+      return res.redirect('/?upgrade=lost');
     }
     return res.redirect('/?upgrade=unpaid');
   } catch (err) {
