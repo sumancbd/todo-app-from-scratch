@@ -104,6 +104,10 @@ function hasCompletedTodos() {
   return todos.some((todo) => todo.completed);
 }
 
+function hasIncompleteTodos() {
+  return todos.some((todo) => !todo.completed);
+}
+
 function toggleTodo(id) {
   const todo = todos.find((candidateTodo) => candidateTodo.id === id);
 
@@ -153,6 +157,12 @@ function clearCompletedTodos() {
   }
 }
 
+function markAllTodos(completed) {
+  todos.forEach((todo) => {
+    todo.completed = completed;
+  });
+}
+
 function normalizeFilter(filterValue) {
   if (filterValue === "active" || filterValue === "completed") {
     return filterValue;
@@ -173,6 +183,8 @@ function renderHomepage(response, viewModel = {}) {
     todos: withAddedLabels(getTodos({ filter })),
     itemsLeft: getItemsLeftCount(),
     hasCompletedTodos: hasCompletedTodos(),
+    hasTodos: todos.length > 0,
+    allTodosCompleted: todos.length > 0 && !hasIncompleteTodos(),
     formError: "",
     todoValue: "",
     editingId: null,
@@ -265,6 +277,14 @@ app.post("/todos/clear-completed", (request, response) => {
   response.redirect(filterRedirectPath(filter));
 });
 
+app.post("/todos/mark-all", (request, response) => {
+  const filter = normalizeFilter(request.body?.filter);
+  const allTodosCompleted = todos.length > 0 && !hasIncompleteTodos();
+
+  markAllTodos(!allTodosCompleted);
+  response.redirect(filterRedirectPath(filter));
+});
+
 app.get("/health", (_request, response) => {
   response.json({ status: "ok" });
 });
@@ -284,6 +304,8 @@ module.exports = {
   getItemsLeftCount,
   getTodos,
   hasCompletedTodos,
+  hasIncompleteTodos,
+  markAllTodos,
   normalizeTodoText,
   resetTodos,
   resolvePort,

@@ -60,6 +60,14 @@
           <h2 id="todo-list-title">Todo list</h2>
           <p><%= itemsLeft %> item<%= itemsLeft === 1 ? "" : "s" %> left</p>
         </div>
+        <% if (hasTodos) { %>
+          <form class="todo-mark-all-form" action="/todos/mark-all" method="post">
+            <input type="hidden" name="filter" value="<%= filter %>" />
+            <button class="cta cta-secondary" type="submit">
+              <%= allTodosCompleted ? "Mark all not done" : "Mark all done" %>
+            </button>
+          </form>
+        <% } %>
         <nav class="todo-filters" aria-label="Filter todos">
           <a
             class="todo-filters__link"
