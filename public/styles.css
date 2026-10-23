@@ -220,6 +220,21 @@ h2 {
   background: color-mix(in srgb, var(--accent) 86%, #ffffff 14%);
 }
 
+.todo-mark-all-form {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.todo-mark-all-form .cta-secondary {
+  margin-top: 0;
+}
+
+.todo-mark-all-form__count {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+}
+
 .form-message,
 .empty-state,
 .health-status,

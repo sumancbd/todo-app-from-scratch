@@ -467,6 +467,100 @@ test("GET / shows a Mark all not done button when every todo is already done", a
   assert.match(body, /Mark all not done/i);
 });
 
+test("GET / shows how many todos are open next to the Mark all done button", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /Mark all done/i);
+  assert.match(markAllSection, /data-mark-all-count/i);
+  assert.match(markAllSection, /2 todos open/i);
+});
+
+test("GET / updates the open count next to the Mark all button as todos are toggled", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  await makeRequest(`/todos/${firstTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /1 todo open/i);
+});
+
+test("GET / shows 0 todos open next to the Mark all not done button", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /Mark all not done/i);
+  assert.match(markAllSection, /0 todos open/i);
+});
+
 test("POST /todos/mark-all marks every todo as done in one click and survives reload", async () => {
   await makeRequest("/todos", {
     method: "POST",

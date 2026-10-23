@@ -66,6 +66,9 @@
             <button class="cta cta-secondary" type="submit">
               <%= allTodosCompleted ? "Mark all not done" : "Mark all done" %>
             </button>
+            <span class="todo-mark-all-form__count" data-mark-all-count>
+              <%= itemsLeft %> <%= itemsLeft === 1 ? "todo" : "todos" %> open
+            </span>
           </form>
         <% } %>
         <nav class="todo-filters" aria-label="Filter todos">
