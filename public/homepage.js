@@ -70,9 +70,30 @@ function initializeHealthCheck(env) {
   });
 }
 
+function initializeTodoToggle(env) {
+  const toggleForms = env.document?.querySelectorAll?.("[data-todo-toggle-form]");
+
+  if (!toggleForms) {
+    return;
+  }
+
+  toggleForms.forEach((form) => {
+    const checkbox = form.querySelector(".todo-toggle");
+
+    if (!checkbox) {
+      return;
+    }
+
+    checkbox.addEventListener("change", () => {
+      form.requestSubmit();
+    });
+  });
+}
+
 function initializeHomepage(env = window) {
   initializeTheme(env);
   initializeHealthCheck(env);
+  initializeTodoToggle(env);
 }
 
 if (typeof window !== "undefined") {
@@ -85,5 +106,6 @@ if (typeof module !== "undefined") {
     initializeHealthCheck,
     initializeHomepage,
     initializeTheme,
+    initializeTodoToggle,
   };
 }

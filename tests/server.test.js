@@ -1,9 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { resolvePort } = require("../server");
-const { initializeHomepage } = require("../public/homepage");
+const fs = require("node:fs");
+const path = require("node:path");
+const { beforeEach } = require("node:test");
+const { formatAddedTime, getTodos, resetTodos, resolvePort } = require("../server");
+const { initializeHomepage, initializeTodoToggle } = require("../public/homepage");
 
-async function makeRequest(pathname) {
+async function makeRequest(pathname, options = {}) {
   const { app } = require("../server");
   const server = app.listen(0);
 
@@ -14,7 +17,7 @@ async function makeRequest(pathname) {
   const { port } = server.address();
 
   try {
-    return await fetch(`http://127.0.0.1:${port}${pathname}`);
+    return await fetch(`http://127.0.0.1:${port}${pathname}`, options);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => {
@@ -29,19 +32,941 @@ async function makeRequest(pathname) {
   }
 }
 
-test("GET / returns the starter page", async () => {
+beforeEach(() => {
+  resetTodos();
+});
+
+test("GET / renders the todo page with an empty state", async () => {
   const response = await makeRequest("/");
   const body = await response.text();
 
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
-  assert.match(body, /Express and EJS Starter/i);
   assert.match(body, /Simple Todo App/i);
+  assert.match(body, /Create a new todo/i);
+  assert.match(body, /You do not have any todos yet\./i);
+  assert.match(body, /Single-server todo flow/i);
+  assert.doesNotMatch(body, /fullstack/i);
+  assert.match(body, /<form[^>]+action="\/todos"/i);
   assert.match(body, /<link[^>]+href="\/styles\.css"/i);
   assert.doesNotMatch(body, /<a[^>]+href="\/health"/i);
   assert.match(body, /<button[^>]+type="button"[^>]*>Check health<\/button>/i);
   assert.match(body, /data-health-status/i);
   assert.match(body, /<script[^>]+src="\/homepage\.js"/i);
+});
+
+test("POST /todos creates a todo and redirects to the homepage", async () => {
+  const response = await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+    redirect: "manual",
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.get("location"), "/");
+});
+
+test("POST /todos records when the todo was created", async () => {
+  const beforeCreate = Date.now();
+
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  assert.equal(typeof todo.createdAt, "number");
+  assert.ok(todo.createdAt >= beforeCreate);
+});
+
+test("GET / shows an Added time under a newly created todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Added just now/i);
+});
+
+test("GET / renders created todos", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(body, /Buy milk/i);
+  assert.doesNotMatch(body, /You do not have any todos yet\./i);
+});
+
+test("GET / shows the items-left counter after creating a todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20groceries",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/toggle marks a todo completed and reduces items left", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const toggleResponse = await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(toggleResponse.status, 302);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /0 items left/i);
+  assert.match(
+    body,
+    /data-completed="true"[^]*?Buy milk/i,
+  );
+});
+
+test("GET /?filter=active hides completed todos while the default view keeps showing them", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const allResponse = await makeRequest("/");
+  const allBody = await allResponse.text();
+
+  assert.match(allBody, /Completed todo/i);
+
+  const activeResponse = await makeRequest("/?filter=active");
+  const activeBody = await activeResponse.text();
+
+  assert.doesNotMatch(activeBody, /Completed todo/i);
+  assert.match(activeBody, /You do not have any active todos\./i);
+});
+
+test("GET /?filter=completed shows only completed todos and hides active ones", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Active%20todo",
+  });
+
+  const [completedTodo] = getTodos();
+
+  await makeRequest(`/todos/${completedTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/?filter=completed");
+  const body = await response.text();
+
+  assert.match(body, /Completed todo/i);
+  assert.doesNotMatch(body, /Active todo/i);
+});
+
+test("GET /?filter=completed shows an empty state when no todos are completed", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/?filter=completed");
+  const body = await response.text();
+
+  assert.match(body, /You do not have any completed todos\./i);
+});
+
+test("POST /todos/:id/toggle preserves the completed filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const toggleResponse = await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(toggleResponse.status, 302);
+  assert.equal(toggleResponse.headers.get("location"), "/?filter=completed");
+});
+
+test("POST /todos/clear-completed preserves the completed filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/?filter=completed");
+});
+
+test("GET / does not show Clear completed when no todos are completed", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Clear completed/i);
+});
+
+test("GET / shows Clear completed once a todo is marked done", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Clear completed/i);
+});
+
+test("POST /todos/clear-completed removes completed todos, keeps active ones, and preserves the counter", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  await makeRequest(`/todos/${firstTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/");
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Completed todo/i);
+  assert.match(body, /Buy eggs/i);
+  assert.match(body, /1 item left/i);
+  assert.doesNotMatch(body, /Clear completed/i);
+});
+
+test("POST /todos/clear-completed preserves the active filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const clearResponse = await makeRequest("/todos/clear-completed", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=active",
+    redirect: "manual",
+  });
+
+  assert.equal(clearResponse.status, 302);
+  assert.equal(clearResponse.headers.get("location"), "/?filter=active");
+});
+
+test("GET / does not show the mark-all button when there are no todos", async () => {
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /todo-mark-all-form/i);
+});
+
+test("GET / shows a Mark all done button when some todos are not done", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Mark all done/i);
+  assert.doesNotMatch(body, /Mark all not done/i);
+});
+
+test("GET / shows a Mark all not done button when every todo is already done", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Mark all not done/i);
+});
+
+test("GET / shows how many todos are open next to the Mark all done button", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /Mark all done/i);
+  assert.match(markAllSection, /data-mark-all-count/i);
+  assert.match(markAllSection, /2 todos open/i);
+});
+
+test("GET / updates the open count next to the Mark all button as todos are toggled", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  await makeRequest(`/todos/${firstTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /1 todo open/i);
+});
+
+test("GET / shows 0 todos open next to the Mark all not done button", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+  const markAllSection = body.match(
+    /<form class="todo-mark-all-form"[\s\S]*?<\/form>/i,
+  )?.[0];
+
+  assert.ok(markAllSection, "expected to find the mark-all form");
+  assert.match(markAllSection, /Mark all not done/i);
+  assert.match(markAllSection, /0 todos open/i);
+});
+
+test("POST /todos/mark-all marks every todo as done in one click and survives reload", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const markAllResponse = await makeRequest("/todos/mark-all", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(markAllResponse.status, 302);
+  assert.equal(markAllResponse.headers.get("location"), "/");
+  assert.deepEqual(getTodos().map((todo) => todo.completed), [true, true]);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /0 items left/i);
+  assert.match(body, /Mark all not done/i);
+});
+
+test("POST /todos/mark-all marks every todo as not done when all are already done", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const markAllResponse = await makeRequest("/todos/mark-all", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(markAllResponse.status, 302);
+  assert.deepEqual(getTodos().map((candidate) => candidate.completed), [false]);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Mark all done/i);
+});
+
+test("POST /todos/mark-all preserves the current filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const markAllResponse = await makeRequest("/todos/mark-all", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=active",
+    redirect: "manual",
+  });
+
+  assert.equal(markAllResponse.status, 302);
+  assert.equal(markAllResponse.headers.get("location"), "/?filter=active");
+});
+
+test("POST /todos/:id/delete removes only that todo and keeps the counter correct", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20eggs",
+  });
+
+  const [firstTodo] = getTodos();
+
+  const deleteResponse = await makeRequest(`/todos/${firstTodo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+
+  const remainingTodos = getTodos();
+
+  assert.equal(remainingTodos.length, 1);
+  assert.equal(remainingTodos[0].text, "Buy eggs");
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/delete on a completed todo does not change the items-left count", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Active%20todo",
+  });
+
+  const [completedTodo] = getTodos();
+
+  await makeRequest(`/todos/${completedTodo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  await makeRequest(`/todos/${completedTodo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.doesNotMatch(body, /Completed todo/i);
+  assert.match(body, /1 item left/i);
+});
+
+test("POST /todos/:id/delete preserves the current filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Completed%20todo",
+  });
+
+  const [todo] = getTodos();
+
+  await makeRequest(`/todos/${todo.id}/toggle`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+  });
+
+  const deleteResponse = await makeRequest(`/todos/${todo.id}/delete`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "filter=completed",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+  assert.equal(deleteResponse.headers.get("location"), "/?filter=completed");
+});
+
+test("POST /todos/:id/delete with an unknown id is a safe no-op", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const deleteResponse = await makeRequest("/todos/999999/delete", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "",
+    redirect: "manual",
+  });
+
+  assert.equal(deleteResponse.status, 302);
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /Buy milk/i);
+  assert.match(body, /1 item left/i);
+});
+
+test("GET / renders an accessible delete button for each todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /<form[^>]+action="\/todos\/\d+\/delete"/i);
+  assert.match(body, /aria-label="Delete Buy milk"/i);
+});
+
+test("GET / renders an accessible edit button for each todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const response = await makeRequest("/");
+  const body = await response.text();
+
+  assert.match(body, /<a[^>]+href="\/\?editing=\d+&filter=all"[^>]*>Edit<\/a>/i);
+  assert.match(body, /aria-label="Edit Buy milk"/i);
+});
+
+test("GET /?editing=<id> shows that todo as an edit form and hides its toggle/delete controls", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const response = await makeRequest(`/?editing=${todo.id}`);
+  const body = await response.text();
+
+  assert.match(body, /<form class="todo-edit-form" action="\/todos\/\d+\/edit"/i);
+  assert.match(body, /value="Buy milk"/i);
+  assert.match(body, />Save<\/button>/i);
+  assert.match(body, />Cancel<\/a>/i);
+  assert.doesNotMatch(body, /todo-toggle-form/i);
+  assert.doesNotMatch(body, /todo-delete-form/i);
+});
+
+test("POST /todos/:id/edit updates the text and preserves the current filter on redirect", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const editResponse = await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Buy%20oat%20milk&filter=active",
+    redirect: "manual",
+  });
+
+  assert.equal(editResponse.status, 302);
+  assert.equal(editResponse.headers.get("location"), "/?filter=active");
+  assert.equal(getTodos()[0].text, "Buy oat milk");
+});
+
+test("POST /todos/:id/edit does not change the todo's added time", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+  const originalCreatedAt = todo.createdAt;
+
+  await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Buy%20oat%20milk",
+  });
+
+  assert.equal(getTodos()[0].createdAt, originalCreatedAt);
+});
+
+test("POST /todos/:id/edit with blank text shows the same validation error as creating a todo", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const editResponse = await makeRequest(`/todos/${todo.id}/edit`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=%20%20%20",
+  });
+  const body = await editResponse.text();
+
+  assert.equal(editResponse.status, 400);
+  assert.match(body, /Please enter a todo before saving\./i);
+  assert.match(body, /<form class="todo-edit-form" action="\/todos\/\d+\/edit"/i);
+  assert.equal(getTodos()[0].text, "Buy milk");
+});
+
+test("POST /todos/:id/edit with an unknown id is a safe no-op", async () => {
+  const editResponse = await makeRequest("/todos/999999/edit", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "text=Anything",
+    redirect: "manual",
+  });
+
+  assert.equal(editResponse.status, 302);
+});
+
+test("GET / renders a Cancel link back to the current filter while editing", async () => {
+  await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=Buy%20milk",
+  });
+
+  const [todo] = getTodos();
+
+  const response = await makeRequest(`/?editing=${todo.id}&filter=active`);
+  const body = await response.text();
+
+  assert.match(body, /href="\/\?filter=active">Cancel<\/a>/i);
+});
+
+test("POST /todos with blank content shows a validation error", async () => {
+  const response = await makeRequest("/todos", {
+    method: "POST",
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    body: "todo=%20%20%20",
+  });
+  const body = await response.text();
+
+  assert.equal(response.status, 400);
+  assert.match(body, /Please enter a todo before saving\./i);
+  assert.match(body, /You do not have any todos yet\./i);
 });
 
 test("GET /styles.css serves the stylesheet asset", async () => {
@@ -51,6 +976,17 @@ test("GET /styles.css serves the stylesheet asset", async () => {
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /text\/css/i);
   assert.match(body, /body\s*\{/i);
+});
+
+test("project docs and package metadata avoid the old fullstack wording", () => {
+  const readme = fs.readFileSync(path.join(__dirname, "..", "README.md"), "utf8");
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8"),
+  );
+
+  assert.match(readme, /Express and EJS todo app\./);
+  assert.doesNotMatch(readme, /fullstack/i);
+  assert.equal(packageJson.description, "Express and EJS todo app.");
 });
 
 function createElement(initialText = "") {
@@ -160,6 +1096,42 @@ function createHomePageEnvironment(overrides = {}) {
     timeoutEntries,
   };
 }
+
+function createTodoToggleElement() {
+  return {
+    listeners: new Map(),
+    addEventListener(eventName, listener) {
+      this.listeners.set(eventName, listener);
+    },
+    change() {
+      const listener = this.listeners.get("change");
+
+      if (listener) {
+        listener();
+      }
+    },
+  };
+}
+
+test("initializeTodoToggle submits a todo's form when its checkbox changes", () => {
+  const checkbox = createTodoToggleElement();
+  const submitCalls = [];
+  const form = {
+    querySelector: (selector) => (selector === ".todo-toggle" ? checkbox : null),
+    requestSubmit: () => submitCalls.push(true),
+  };
+  const environment = {
+    document: {
+      querySelectorAll: (selector) =>
+        selector === "[data-todo-toggle-form]" ? [form] : [],
+    },
+  };
+
+  initializeTodoToggle(environment);
+  checkbox.change();
+
+  assert.equal(submitCalls.length, 1);
+});
 
 test("initializeHomepage waits for a click before checking health", () => {
   const { environment, fetchCalls, status } = createHomePageEnvironment();
@@ -282,4 +1254,32 @@ test("resolvePort falls back to 3000 when PORT is out of range", () => {
 test("resolvePort returns numeric PORT values in range", () => {
   assert.equal(resolvePort("3001"), 3001);
   assert.equal(resolvePort(" 3002 "), 3002);
+});
+
+test("formatAddedTime shows 'just now' for under a minute", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now, now), "just now");
+  assert.equal(formatAddedTime(now - 59 * 1000, now), "just now");
+});
+
+test("formatAddedTime shows minutes ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 60 * 1000, now), "1 minute ago");
+  assert.equal(formatAddedTime(now - 5 * 60 * 1000, now), "5 minutes ago");
+});
+
+test("formatAddedTime shows hours ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 60 * 60 * 1000, now), "1 hour ago");
+  assert.equal(formatAddedTime(now - 2 * 60 * 60 * 1000, now), "2 hours ago");
+});
+
+test("formatAddedTime shows days ago, singular and plural", () => {
+  const now = Date.now();
+
+  assert.equal(formatAddedTime(now - 24 * 60 * 60 * 1000, now), "1 day ago");
+  assert.equal(formatAddedTime(now - 3 * 24 * 60 * 60 * 1000, now), "3 days ago");
 });

@@ -6,6 +6,8 @@ const app = express();
 const publicDir = path.join(__dirname, "public");
 const viewsDir = path.join(__dirname, "views");
 const DEFAULT_PORT = 3000;
+const todos = [];
+let nextTodoId = 1;
 
 function resolvePort(portValue) {
   if (portValue === undefined) {
@@ -31,17 +33,256 @@ function resolvePort(portValue) {
   return parsedPort;
 }
 
+function normalizeTodoText(todoValue) {
+  return typeof todoValue === "string" ? todoValue.trim() : "";
+}
+
+function createTodo(todoText) {
+  const todo = {
+    id: nextTodoId,
+    text: todoText,
+    completed: false,
+    createdAt: Date.now(),
+  };
+
+  nextTodoId += 1;
+  todos.push(todo);
+
+  return todo;
+}
+
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+function pluralize(count, unit) {
+  return `${count} ${unit}${count === 1 ? "" : "s"} ago`;
+}
+
+function formatAddedTime(createdAt, now = Date.now()) {
+  const elapsedMs = now - createdAt;
+
+  if (elapsedMs < MINUTE_MS) {
+    return "just now";
+  }
+
+  if (elapsedMs < HOUR_MS) {
+    return pluralize(Math.floor(elapsedMs / MINUTE_MS), "minute");
+  }
+
+  if (elapsedMs < DAY_MS) {
+    return pluralize(Math.floor(elapsedMs / HOUR_MS), "hour");
+  }
+
+  return pluralize(Math.floor(elapsedMs / DAY_MS), "day");
+}
+
+function withAddedLabels(todosList, now = Date.now()) {
+  return todosList.map((todo) => ({
+    ...todo,
+    addedLabel: formatAddedTime(todo.createdAt, now),
+  }));
+}
+
+function getTodos({ filter } = {}) {
+  if (filter === "active") {
+    return todos.filter((todo) => !todo.completed);
+  }
+
+  if (filter === "completed") {
+    return todos.filter((todo) => todo.completed);
+  }
+
+  return [...todos];
+}
+
+function getItemsLeftCount() {
+  return todos.filter((todo) => !todo.completed).length;
+}
+
+function hasCompletedTodos() {
+  return todos.some((todo) => todo.completed);
+}
+
+function hasIncompleteTodos() {
+  return todos.some((todo) => !todo.completed);
+}
+
+function toggleTodo(id) {
+  const todo = todos.find((candidateTodo) => candidateTodo.id === id);
+
+  if (!todo) {
+    return undefined;
+  }
+
+  todo.completed = !todo.completed;
+
+  return todo;
+}
+
+function deleteTodo(id) {
+  const index = todos.findIndex((candidateTodo) => candidateTodo.id === id);
+
+  if (index === -1) {
+    return undefined;
+  }
+
+  const [deletedTodo] = todos.splice(index, 1);
+
+  return deletedTodo;
+}
+
+function updateTodoText(id, text) {
+  const todo = todos.find((candidateTodo) => candidateTodo.id === id);
+
+  if (!todo) {
+    return undefined;
+  }
+
+  todo.text = text;
+
+  return todo;
+}
+
+function resetTodos() {
+  todos.length = 0;
+  nextTodoId = 1;
+}
+
+function clearCompletedTodos() {
+  for (let index = todos.length - 1; index >= 0; index -= 1) {
+    if (todos[index].completed) {
+      todos.splice(index, 1);
+    }
+  }
+}
+
+function markAllTodos(completed) {
+  todos.forEach((todo) => {
+    todo.completed = completed;
+  });
+}
+
+function normalizeFilter(filterValue) {
+  if (filterValue === "active" || filterValue === "completed") {
+    return filterValue;
+  }
+
+  return "all";
+}
+
+function filterRedirectPath(filter) {
+  return filter === "all" ? "/" : `/?filter=${filter}`;
+}
+
+function renderHomepage(response, viewModel = {}) {
+  const filter = normalizeFilter(viewModel.filter);
+
+  response.render("index", {
+    title: "Simple Todo App",
+    todos: withAddedLabels(getTodos({ filter })),
+    itemsLeft: getItemsLeftCount(),
+    hasCompletedTodos: hasCompletedTodos(),
+    hasTodos: todos.length > 0,
+    allTodosCompleted: todos.length > 0 && !hasIncompleteTodos(),
+    formError: "",
+    todoValue: "",
+    editingId: null,
+    editError: "",
+    editValue: "",
+    ...viewModel,
+    filter,
+  });
+}
+
 const port = resolvePort(process.env.PORT);
 
 app.set("view engine", "ejs");
 app.set("views", viewsDir);
 
+app.use(express.urlencoded({ extended: false }));
 app.use(express.static(publicDir));
 
-app.get("/", (_request, response) => {
-  response.render("index", {
-    title: "Simple Todo App",
-  });
+app.get("/", (request, response) => {
+  const parsedEditingId = Number.parseInt(request.query?.editing, 10);
+  const editingId = Number.isNaN(parsedEditingId) ? null : parsedEditingId;
+
+  renderHomepage(response, { filter: request.query?.filter, editingId });
+});
+
+app.post("/todos", (request, response) => {
+  const todoValue = typeof request.body?.todo === "string"
+    ? request.body.todo
+    : "";
+  const todoText = normalizeTodoText(todoValue);
+  const filter = normalizeFilter(request.body?.filter);
+
+  if (!todoText) {
+    response.status(400);
+    renderHomepage(response, {
+      formError: "Please enter a todo before saving.",
+      todoValue,
+      filter,
+    });
+    return;
+  }
+
+  createTodo(todoText);
+  response.redirect(filterRedirectPath(filter));
+});
+
+app.post("/todos/:id/toggle", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const filter = normalizeFilter(request.body?.filter);
+
+  toggleTodo(todoId);
+  response.redirect(filterRedirectPath(filter));
+});
+
+app.post("/todos/:id/delete", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const filter = normalizeFilter(request.body?.filter);
+
+  deleteTodo(todoId);
+  response.redirect(filterRedirectPath(filter));
+});
+
+app.post("/todos/:id/edit", (request, response) => {
+  const todoId = Number.parseInt(request.params.id, 10);
+  const rawText = typeof request.body?.text === "string"
+    ? request.body.text
+    : "";
+  const todoText = normalizeTodoText(rawText);
+  const filter = normalizeFilter(request.body?.filter);
+
+  if (!todoText) {
+    response.status(400);
+    renderHomepage(response, {
+      filter,
+      editingId: todoId,
+      editError: "Please enter a todo before saving.",
+      editValue: rawText,
+    });
+    return;
+  }
+
+  updateTodoText(todoId, todoText);
+  response.redirect(filterRedirectPath(filter));
+});
+
+app.post("/todos/clear-completed", (request, response) => {
+  const filter = normalizeFilter(request.body?.filter);
+
+  clearCompletedTodos();
+  response.redirect(filterRedirectPath(filter));
+});
+
+app.post("/todos/mark-all", (request, response) => {
+  const filter = normalizeFilter(request.body?.filter);
+  const allTodosCompleted = todos.length > 0 && !hasIncompleteTodos();
+
+  markAllTodos(!allTodosCompleted);
+  response.redirect(filterRedirectPath(filter));
 });
 
 app.get("/health", (_request, response) => {
@@ -54,4 +295,20 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, resolvePort };
+module.exports = {
+  app,
+  clearCompletedTodos,
+  createTodo,
+  deleteTodo,
+  formatAddedTime,
+  getItemsLeftCount,
+  getTodos,
+  hasCompletedTodos,
+  hasIncompleteTodos,
+  markAllTodos,
+  normalizeTodoText,
+  resetTodos,
+  resolvePort,
+  toggleTodo,
+  updateTodoText,
+};
